@@ -1,8 +1,12 @@
 import chromadb
+import os
 from src.embeddings import embed_texts
 
+# Use /tmp for Railway ephemeral storage or local ./chroma_db
+CHROMA_PATH = os.getenv("CHROMA_PATH", "/tmp/chroma_db" if os.environ.get("RAILWAY_ENVIRONMENT") else "./chroma_db")
+
 class VectorStore:
-    def __init__(self, path="./chroma_db"):
+    def __init__(self, path=CHROMA_PATH):
         self.client = chromadb.PersistentClient(path=path)
         self.collection = self.client.get_or_create_collection("earnings_data")
 
@@ -29,7 +33,10 @@ class VectorStore:
         return results
 
     def clear_all(self):
-        self.client.delete_collection("earnings_data")
+        try:
+            self.client.delete_collection("earnings_data")
+        except:
+            pass
         self.collection = self.client.get_or_create_collection("earnings_data")
 
 def get_store():
