@@ -1,23 +1,9 @@
-# Backend
-streamlit
 fastapi
 uvicorn
-python-multipart
-
-# HTTP & APIs
 requests
-anthropic
-openai
-
-# LangChain
 langchain
-langchain-anthropic
-langchain-openai
 langchain-community
-
-# Vector DB
 chromadb
-
-# Utils
+openai
 python-dotenv
 pydantic
