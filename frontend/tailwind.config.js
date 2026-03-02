@@ -2,24 +2,28 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,jsx}",
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
       colors: {
         primary: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
-        }
-      }
+          light: '#323a54',
+          DEFAULT: '#141727',
+          dark: '#0b0d1a',
+        },
+        background: '#f8f9fa',
+        card: '#ffffff',
+      },
+      backgroundImage: {
+        'accent-gradient': 'linear-gradient(to right, #2152ff, #21d4fd)',
+        'success-gradient': 'linear-gradient(to right, #17ad37, #98ec2d)',
+        'warning-gradient': 'linear-gradient(to right, #f53939, #fbcf34)',
+      },
+      fontFamily: {
+        sans: ['Inter', 'Open Sans', 'sans-serif'],
+        headings: ['Poppins', 'Inter', 'sans-serif'],
+      },
     },
   },
   plugins: [],

@@ -2,155 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --gradient-bg: linear-gradient(310deg, #2152ff, #21d4fd);
-  --gradient-success: linear-gradient(310deg, #17ad37, #98ec2d);
-  --gradient-warning: linear-gradient(310deg, #f53939, #fbcf34);
-  --gradient-info: linear-gradient(310deg, #2152ff, #21d4fd);
-  --gradient-dark: linear-gradient(310deg, #141727, #3a416f);
+@layer base {
+  body {
+    @apply font-sans bg-background text-primary;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-headings font-bold;
+  }
 }
 
-body {
-  font-family: 'Open Sans', sans-serif;
-  background-color: #f8f9fa;
+@layer components {
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-accent-gradient;
+  }
+
+  .btn-primary {
+    @apply bg-accent-gradient text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/25 hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-white border border-gray-200 text-primary font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:bg-gray-50 hover:border-gray-300 active:scale-95 shadow-sm;
+  }
+
+  .btn-outline {
+    @apply bg-transparent border-2 border-primary/10 text-primary font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:bg-primary/5 hover:border-primary/20 active:scale-95;
+  }
+
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl;
+  }
+
+  .card-hover {
+    @apply hover:-translate-y-2 hover:shadow-2xl transition-all duration-500;
+  }
 }
 
-.sidebar {
-  background: linear-gradient(195deg, #1a1f36, #323a54);
+/* Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.card {
-  background: #fff;
-  border-radius: 0.75rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-.card-header {
-  padding: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.card-body {
-  padding: 1.5rem;
-}
-
-.btn-primary {
-  background: linear-gradient(310deg, #2152ff, #21d4fd);
-  color: white;
-  border: none;
-  padding: 0.625rem 1.5rem;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  transition: all 0.15s ease;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 11px rgba(33, 82, 255, 0.35);
-}
-
-.btn-secondary {
-  background: #fff;
-  color: #344767;
-  border: 1px solid #dee2e6;
-  padding: 0.625rem 1.5rem;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  transition: all 0.15s ease;
-}
-
-.btn-secondary:hover {
-  background: #f8f9fa;
-}
-
-.ticker-badge {
-  background: linear-gradient(310deg, #2152ff, #21d4fd);
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  font-weight: 700;
-  font-size: 1.25rem;
-}
-
-.stat-card {
-  background: #fff;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.stat-card .icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stat-card .icon.blue {
-  background: linear-gradient(310deg, #2152ff, #21d4fd);
-}
-
-.stat-card .icon.green {
-  background: linear-gradient(310deg, #17ad37, #98ec2d);
-}
-
-.stat-card .icon.orange {
-  background: linear-gradient(310deg, #f53939, #fbcf34);
-}
-
-.stat-card .icon.purple {
-  background: linear-gradient(310deg, #7928ca, #ff0080);
-}
-
-.section-title {
-  color: #344767;
-  font-weight: 700;
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.report-section {
-  background: #fff;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.report-section h3 {
-  color: #344767;
-  font-weight: 700;
-  font-size: 1.125rem;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 2px solid #e5e7eb;
-}
-
-.citation {
-  background: #f0f9ff;
-  color: #0369a1;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.loading-spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.fade-in {
-  animation: fadeIn 0.3s ease-in;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
 }
