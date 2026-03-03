@@ -1,9 +1,18 @@
 """
-Report Generator - GLM-5 via Modal API
+Report Generator - Real Data Analysis with GLM-5
 """
 import requests
 import os
-from src.prompts import EXECUTIVE_SUMMARY, ANALYST_QUESTIONS, CONTRADICTION_FINDER
+import json
+from src.prompts import (
+    SYSTEM_PROMPT,
+    EXECUTIVE_SUMMARY,
+    ANALYST_QUESTIONS,
+    RED_FLAGS,
+    CONTRADICTION_FINDER,
+    DELTA_REPORT,
+    FINANCIAL_HEALTH,
+)
 from src.vector_store import get_store
 
 # Modal API for GLM-5
@@ -11,40 +20,38 @@ MODAL_API_KEY = os.getenv("MODAL_API_KEY", "")
 MODAL_API_URL = os.getenv("MODAL_API_URL", "https://api.modal.com/v1/chat/completions")
 
 
-def call_glm(prompt, context):
-    """Call GLM-5 model via Modal API."""
+def call_glm(system_prompt, user_prompt, context):
+    """Call GLM-5 model via Modal API with proper system prompt."""
+    
+    if not MODAL_API_KEY:
+        return "Error: MODAL_API_KEY not configured. Please add your API key to Railway environment variables."
     
     headers = {
         "Authorization": f"Bearer {MODAL_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    full_prompt = f"""{prompt}
+    full_user_prompt = f"""{user_prompt}
 
-Context from SEC filings and transcripts:
+---
+DOCUMENT CONTEXT:
 {context}
 
-Instructions:
+---
+Remember:
 - Only use information from the provided context
-- Include citations like [Source: 10-K Section X] for all claims
-- Be concise and professional
-- If information is not available, say "Not disclosed in available documents"
+- Cite sources like [Source: 10-K, Item 7] for all claims
+- If information is not available, state "Not disclosed in available documents"
 """
     
     payload = {
         "model": "zai-org/GLM-5-FP8",
         "messages": [
-            {
-                "role": "system", 
-                "content": "You are an expert financial analyst helping a CFO prepare for an earnings call. Be concise, accurate, and always cite sources."
-            },
-            {
-                "role": "user", 
-                "content": full_prompt
-            }
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": full_user_prompt}
         ],
         "temperature": 0.7,
-        "max_tokens": 2000
+        "max_tokens": 3000
     }
     
     try:
@@ -52,67 +59,142 @@ Instructions:
             MODAL_API_URL,
             headers=headers,
             json=payload,
-            timeout=60
+            timeout=90
         )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
+        else:
+            return f"API Error ({response.status_code}): {response.text[:500]}"
+            
+    except requests.exceptions.Timeout:
+        return "Error: API request timed out. Please try again."
     except Exception as e:
-        print(f"GLM API Error: {e}")
-        return generate_local_report(context, str(e))
+        return f"Error calling GLM-5: {str(e)}"
 
 
-def generate_local_report(context, error=""):
-    """Generate a basic report without LLM (fallback)."""
+def format_context_for_llm(data):
+    """Format the fetched data into a clean context for the LLM."""
     
-    return f"""Based on the SEC filings and transcripts analyzed:
+    context_parts = []
+    
+    # Company info
+    if data.get("ticker"):
+        context_parts.append(f"=== COMPANY: {data.get('company_name', data['ticker'])} ({data['ticker']}) ===")
+    
+    # Financial metrics
+    if data.get("metrics"):
+        context_parts.append("\n=== FINANCIAL METRICS (from SEC XBRL) ===")
+        for metric, values in data["metrics"].items():
+            if isinstance(values, dict) and values.get("value"):
+                value = values["value"]
+                date = values.get("date", "N/A")
+                formatted = format_large_number(value)
+                context_parts.append(f"{metric}: {formatted} (as of {date})")
+    
+    # 10-K sections
+    if data.get("sections"):
+        context_parts.append("\n=== 10-K SECTIONS ===")
+        for section_name, content in data["sections"].items():
+            if content:
+                context_parts.append(f"\n--- {section_name.upper()} ---")
+                context_parts.append(content[:3000])  # Limit per section
+    
+    # Earnings transcript
+    if data.get("transcript"):
+        context_parts.append("\n=== EARNINGS CALL TRANSCRIPT ===")
+        context_parts.append(f"Date: {data.get('transcript_date', 'N/A')}")
+        context_parts.append(f"Management Sentiment: {data.get('sentiment', {}).get('sentiment', 'N/A')}")
+        context_parts.append(data["transcript"][:5000])
+        
+        if data.get("qa_content"):
+            context_parts.append("\n--- Q&A SESSION ---")
+            context_parts.append(data["qa_content"][:2000])
+    
+    return "\n".join(context_parts)
 
-EXECUTIVE SUMMARY:
-The company's performance shows mixed results. Management tone has been cautiously optimistic.
 
-KEY RISKS IDENTIFIED:
-- Market volatility
-- Competitive pressure
-- Supply chain disruptions
-- Regulatory changes
-
-[Fallback mode - LLM unavailable: {error}]
-
-Document sections analyzed: {len(context)} characters.
-"""
+def format_large_number(value):
+    """Format large numbers for readability."""
+    if not value:
+        return "N/A"
+    
+    try:
+        value = float(value)
+        if abs(value) >= 1_000_000_000:
+            return f"${value / 1_000_000_000:.2f}B"
+        elif abs(value) >= 1_000_000:
+            return f"${value / 1_000_000:.2f}M"
+        else:
+            return f"${value:,.0f}"
+    except:
+        return str(value)
 
 
 class ReportGenerator:
     def __init__(self):
         self.store = get_store()
+        self.data = None
     
-    def generate_report(self):
-        """Generate full earnings prep report."""
+    def set_data(self, data):
+        """Set the data to analyze."""
+        self.data = data
+    
+    def generate_full_report(self):
+        """Generate complete earnings prep report."""
         
-        # Get context from vector store
-        all_docs = self.store.collection.get()
+        if not self.data:
+            # Try to get data from vector store
+            all_docs = self.store.collection.get()
+            if all_docs and all_docs.get("documents"):
+                context = "\n\n".join(str(doc) for doc in all_docs["documents"][:15])
+            else:
+                return {
+                    "error": "No data available. Please fetch filings first.",
+                    "summary": "",
+                    "questions": "",
+                    "contradictions": "",
+                    "delta": "",
+                    "financial_health": "",
+                }
+        else:
+            context = format_context_for_llm(self.data)
         
-        if not all_docs or not all_docs.get("documents"):
-            return {
-                "summary": "No documents found. Please fetch filings first.",
-                "questions": "No documents found. Please fetch filings first.",
-                "contradictions": "No documents found. Please fetch filings first."
-            }
+        # Generate each section
+        print("Generating Executive Summary...")
+        summary = call_glm(SYSTEM_PROMPT, EXECUTIVE_SUMMARY, context)
         
-        context = "\n\n".join(all_docs["documents"][:10])
+        print("Generating Analyst Questions...")
+        questions = call_glm(SYSTEM_PROMPT, ANALYST_QUESTIONS, context)
         
-        # Generate each section with GLM-5
-        summary = call_glm(EXECUTIVE_SUMMARY, context)
-        questions = call_glm(ANALYST_QUESTIONS, context)
-        contradictions = call_glm(CONTRADICTION_FINDER, context)
+        print("Generating Red Flags...")
+        red_flags = call_glm(SYSTEM_PROMPT, RED_FLAGS, context)
+        
+        print("Generating Delta Report...")
+        delta = call_glm(SYSTEM_PROMPT, DELTA_REPORT, context)
+        
+        print("Generating Financial Health...")
+        financial_health = call_glm(SYSTEM_PROMPT, FINANCIAL_HEALTH, context)
         
         return {
             "summary": summary,
             "questions": questions,
-            "contradictions": contradictions
+            "contradictions": red_flags,
+            "delta": delta,
+            "financial_health": financial_health,
         }
+    
+    def generate_summary_only(self):
+        """Generate just the executive summary."""
+        if not self.data:
+            return "No data available."
+        
+        context = format_context_for_llm(self.data)
+        return call_glm(SYSTEM_PROMPT, EXECUTIVE_SUMMARY, context)
 
 
 def generate_report():
     """Standalone function to generate report."""
     gen = ReportGenerator()
-    return gen.generate_report()
+    return gen.generate_full_report()
