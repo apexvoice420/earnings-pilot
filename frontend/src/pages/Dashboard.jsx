@@ -20,7 +20,7 @@ import ReportSection from '../components/ReportSection';
 import Button from '../components/Button';
 
 // Backend API URL - Railway backend
-const API_URL = 'https://nozomi.proxy.rlwy.net:55565';
+const API_URL = 'https://earnings-pilot-production.up.railway.app';
 
 const Dashboard = () => {
     const [loading, setLoading] = useState(false);
