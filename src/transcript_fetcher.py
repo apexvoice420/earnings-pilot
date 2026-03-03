@@ -33,7 +33,7 @@ def get_transcript_fmp(ticker):
     return None
 
 
-def get_transcript SeekingAlpha(ticker):
+def get_transcript_seeking_alpha(ticker):
     """Alternative: Scrape from Seeking Alpha (requires handling)."""
     # Note: Seeking Alpha has terms of service
     # This is a placeholder for alternative data sources
