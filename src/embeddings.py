@@ -1,29 +1,29 @@
-"""
-Embeddings - Mock implementation for Railway deployment
-Uses simple hash-based embeddings that don't require external API
-"""
-import hashlib
+import os
+
+# OpenAI API key (optional - will use mock embeddings if not set)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def embed_texts(texts):
     """
-    Generate deterministic embeddings based on text hash.
-    No external API required - works on Railway without OPENAI_API_KEY.
+    Returns a list of embeddings for the given texts.
+    Uses OpenAI text-embedding-3-small if API key is available.
+    Otherwise returns mock embeddings for testing.
     """
-    embeddings = []
-    for text in texts:
-        # Create a deterministic 1536-dim embedding from text hash
-        text_hash = hashlib.sha256(text.encode()).hexdigest()
-        
-        # Convert hash to numbers and normalize
-        embedding = []
-        for i in range(0, len(text_hash), 2):
-            val = int(text_hash[i:i+2], 16) / 255.0
-            embedding.append(val)
-        
-        # Pad or truncate to 1536 dimensions
-        while len(embedding) < 1536:
-            embedding.extend(embedding[:min(len(embedding), 1536 - len(embedding))])
-        
-        embeddings.append(embedding[:1536])
+    if not OPENAI_API_KEY:
+        # Mock embeddings for testing (1536 dimensions for text-embedding-3-small)
+        print("Warning: No OPENAI_API_KEY set, using mock embeddings")
+        return [[0.0] * 1536 for _ in texts]
     
-    return embeddings
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        response = client.embeddings.create(
+            input=texts,
+            model="text-embedding-3-small"
+        )
+        return [data.embedding for data in response.data]
+    except Exception as e:
+        print(f"Embedding error: {e}")
+        # Return mock embeddings on failure
+        return [[0.0] * 1536 for _ in texts]

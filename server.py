@@ -4,11 +4,10 @@ Earnings Copilot - FastAPI Backend
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
-import os
 import uvicorn
+import os
 
-# Initialize app first
+# Initialize app first (before imports that might fail)
 app = FastAPI(title="Earnings Copilot API")
 
 # CORS for frontend
@@ -20,35 +19,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lazy load modules to prevent startup crashes
+# Lazy-loaded modules
 store = None
 report_gen = None
-current_sentiment = {}
 
 def get_store():
     global store
     if store is None:
-        from src.vector_store import VectorStore
-        store = VectorStore()
+        try:
+            from src.vector_store import get_store as _get_store
+            store = _get_store()
+        except Exception as e:
+            print(f"Warning: Vector store init failed: {e}")
+            store = None
     return store
 
 def get_report_gen():
     global report_gen
     if report_gen is None:
-        from src.report_generator import ReportGenerator
-        report_gen = ReportGenerator()
+        try:
+            from src.report_generator import ReportGenerator
+            report_gen = ReportGenerator()
+        except Exception as e:
+            print(f"Warning: Report generator init failed: {e}")
+            report_gen = None
     return report_gen
 
-
-class ReportResponse(BaseModel):
-    summary: str
-    questions: str
-    contradictions: str
-
-class SentimentResponse(BaseModel):
-    sentiment: str
-    positive_count: int
-    negative_count: int
+# Store sentiment in memory for demo
+current_sentiment = {}
 
 
 @app.get("/")
@@ -56,20 +54,20 @@ async def root():
     return {"message": "Earnings Copilot API", "status": "running"}
 
 
-@app.get("/health")
-async def health():
-    """Health check endpoint for Railway"""
-    return {"status": "healthy"}
-
-
 @app.get("/api/status")
 async def get_status():
-    """API status check"""
+    """API status check - Railway healthcheck endpoint"""
     return {
         "status": "healthy",
         "version": "1.0.0",
         "name": "Earnings Copilot"
     }
+
+
+@app.get("/health")
+async def health():
+    """Simple health check"""
+    return {"status": "ok"}
 
 
 @app.get("/api/fetch/{ticker}")
@@ -89,13 +87,13 @@ async def fetch_data(ticker: str):
         
         # Store in vector DB
         vs = get_store()
-        vs.clear_all()
-        
-        for section_name, chunks in sections.items():
-            metadatas = [{"source": "10-K", "section": section_name}] * len(chunks)
-            vs.add_documents(chunks, metadatas)
-        
-        if transcript_data.get('full_content'):
+        if vs:
+            vs.clear_all()
+            
+            for section_name, chunks in sections.items():
+                metadatas = [{"source": "10-K", "section": section_name}] * len(chunks)
+                vs.add_documents(chunks, metadatas)
+            
             transcript_chunks = [transcript_data['full_content'][i:i+1000] 
                                 for i in range(0, len(transcript_data['full_content']), 1000)]
             vs.add_documents(transcript_chunks, [{"source": "Transcript"}] * len(transcript_chunks))
@@ -119,8 +117,15 @@ async def generate_report(ticker: str):
     """Generate earnings prep report"""
     try:
         rg = get_report_gen()
-        report = rg.generate_report()
-        return report
+        if rg:
+            report = rg.generate_report()
+            return report
+        else:
+            return {
+                "summary": "Report generator not available. Check server logs.",
+                "questions": "",
+                "contradictions": ""
+            }
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -129,5 +134,5 @@ async def generate_report(ticker: str):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    print(f"Starting server on port {port}")
+    print(f"Starting Earnings Copilot API on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)
