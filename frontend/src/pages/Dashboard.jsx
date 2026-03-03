@@ -12,7 +12,8 @@ import {
     TrendingUp,
     MessageSquare,
     FileSearch,
-    CheckCircle2
+    CheckCircle2,
+    Zap
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import ReportSection from '../components/ReportSection';
@@ -137,8 +138,8 @@ const Dashboard = () => {
                                                     key={tab.id}
                                                     onClick={() => setActiveTab(tab.id)}
                                                     className={`px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-widest transition-all ${activeTab === tab.id
-                                                            ? 'bg-white text-blue-600 shadow-sm shadow-blue-500/10'
-                                                            : 'text-gray-400 hover:text-primary hover:bg-gray-100'
+                                                        ? 'bg-white text-blue-600 shadow-sm shadow-blue-500/10'
+                                                        : 'text-gray-400 hover:text-primary hover:bg-gray-100'
                                                         }`}
                                                 >
                                                     {tab.label}

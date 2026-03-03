@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Hero from '../components/Hero';
 import PricingCard from '../components/PricingCard';
+import Button from '../components/Button';
 import { ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 
 const FAQItem = ({ question, answer }) => {

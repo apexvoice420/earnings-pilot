@@ -22,6 +22,7 @@ const LandingPage = () => {
                 primaryCTA="Start Free Trial"
                 secondaryCTA="Watch Demo"
                 onPrimaryClick={() => navigate('/dashboard')}
+                onSecondaryClick={() => navigate('/dashboard')}
             />
 
             {/* Features Grid */}
