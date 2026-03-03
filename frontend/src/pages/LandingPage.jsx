@@ -116,24 +116,25 @@ const LandingPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <PricingCard
                             tier="Starter"
-                            price="$497"
-                            subtitle="Ideal for target analysis."
-                            features={["1 Company Analysis", "Basic Report Preview", "Email Delivery", "PDF Export"]}
+                            price="$19"
+                            subtitle="Perfect for retail investors."
+                            features={["5 tickers/month", "Executive summaries", "PDF export", "Basic sentiment"]}
                             onCtaClick={() => navigate('/pricing')}
                         />
                         <PricingCard
-                            tier="Quarterly"
-                            price="$1,497"
-                            subtitle="Complete cycle coverage."
+                            tier="Pro"
+                            price="$49"
+                            subtitle="For serious analysts."
                             highlighted
-                            features={["5 Company Credits/Yr", "Full Prep Deck", "Priority Support", "White-label Prep", "Citation Viewer"]}
+                            badge="Most Popular"
+                            features={["Unlimited tickers", "Full prep reports", "Sentiment tracking", "Excel export", "Priority support"]}
                             onCtaClick={() => navigate('/pricing')}
                         />
                         <PricingCard
                             tier="Enterprise"
-                            price="$4,997"
-                            subtitle="Unlimited IR intelligence."
-                            features={["Unlimited Tickers", "Dedicated Analyst", "API Access", "Custom Model Training", "SSO & Security"]}
+                            price="Custom"
+                            subtitle="For institutions."
+                            features={["Everything in Pro", "API access", "White-label", "Dedicated support", "SLA guarantee"]}
                             onCtaClick={() => navigate('/pricing')}
                         />
                     </div>
