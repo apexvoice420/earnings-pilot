@@ -19,8 +19,8 @@ import StatCard from '../components/StatCard';
 import ReportSection from '../components/ReportSection';
 import Button from '../components/Button';
 
-// Backend API URL - update this to your Railway URL
-const API_URL = 'https://earnings-pilot-production-ec29.up.railway.app';
+// Backend API URL - Railway backend
+const API_URL = 'https://nozomi.proxy.rlwy.net:55565';
 
 const Dashboard = () => {
     const [loading, setLoading] = useState(false);
