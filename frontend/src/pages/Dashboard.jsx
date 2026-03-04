@@ -27,9 +27,11 @@ const Dashboard = () => {
     const [error, setError] = useState(null);
     const [ticker, setTicker] = useState('AAPL');
     const [hasReport, setHasReport] = useState(false);
+    const [hasAudit, setHasAudit] = useState(false);
     const [activeTab, setActiveTab] = useState('summary');
     const [reportData, setReportData] = useState(null);
     const [fetchData, setFetchData] = useState(null);
+    const [auditData, setAuditData] = useState(null);
 
     const fetchFilings = async () => {
         setLoading(true);
@@ -80,6 +82,29 @@ const Dashboard = () => {
         }
     };
 
+    const runAudit = async () => {
+        setLoading(true);
+        setError(null);
+        setHasAudit(false);
+
+        try {
+            const response = await fetch(`${API_URL}/api/audit/${ticker}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            setAuditData(data);
+            setHasAudit(true);
+            setActiveTab('audit');
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const getSentimentColor = (sentiment) => {
         if (!sentiment) return 'text-gray-500';
         if (sentiment.toLowerCase() === 'positive') return 'text-green-600';
@@ -113,11 +138,20 @@ const Dashboard = () => {
                         </div>
                         <Button
                             onClick={generateReport}
-                            className="py-4 px-8 min-w-[200px]"
+                            className="py-4 px-8 min-w-[160px]"
                             disabled={loading || !ticker}
                             icon={loading ? RefreshCw : Plus}
                         >
                             {loading ? 'Analyzing...' : 'Generate Prep'}
+                        </Button>
+                        <Button
+                            onClick={runAudit}
+                            variant="secondary"
+                            className="py-4 px-8 min-w-[160px]"
+                            disabled={loading || !ticker}
+                            icon={FileSearch}
+                        >
+                            {loading ? 'Auditing...' : 'SEC Audit'}
                         </Button>
                     </div>
                 </div>
@@ -198,7 +232,7 @@ const Dashboard = () => {
                         <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mb-12">
                             <div className="border-b border-gray-100">
                                 <div className="flex">
-                                    {['summary', 'questions', 'contradictions'].map((tab) => (
+                                    {['summary', 'questions', 'contradictions', 'audit'].map((tab) => (
                                         <button
                                             key={tab}
                                             onClick={() => setActiveTab(tab)}
@@ -208,7 +242,7 @@ const Dashboard = () => {
                                                     : 'text-gray-400 hover:text-gray-600'
                                             }`}
                                         >
-                                            {tab.replace('_', ' ')}
+                                            {tab === 'audit' ? 'SEC Audit' : tab.replace('_', ' ')}
                                         </button>
                                     ))}
                                 </div>
@@ -235,6 +269,32 @@ const Dashboard = () => {
                                         icon={AlertTriangle}
                                         content={reportData?.contradictions || 'No contradictions found.'}
                                     />
+                                )}
+                                {activeTab === 'audit' && (
+                                    hasAudit ? (
+                                        <div className="space-y-8">
+                                            <ReportSection
+                                                title="YoY Delta Analysis"
+                                                icon={TrendingUp}
+                                                content={auditData?.yoy_analysis || 'No analysis available.'}
+                                            />
+                                            <ReportSection
+                                                title="Transcript Alignment"
+                                                icon={MessageSquare}
+                                                content={auditData?.transcript_alignment || 'No alignment data.'}
+                                            />
+                                            <ReportSection
+                                                title="MD&A Redline & Puffery Check"
+                                                icon={AlertTriangle}
+                                                content={auditData?.sec_redline || 'No redline data.'}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-12 text-gray-500">
+                                            <FileSearch className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                            <p>Click "SEC Audit" above to run the compliance audit</p>
+                                        </div>
+                                    )
                                 )}
                             </div>
                         </div>

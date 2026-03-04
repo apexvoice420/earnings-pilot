@@ -182,6 +182,84 @@ async def get_metrics(ticker: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/audit/{ticker}")
+async def run_sec_audit(ticker: str):
+    """Run SEC Specialist Agent audit on a ticker's 10-K filing."""
+    global current_data
+    
+    try:
+        ticker = ticker.upper()
+        
+        # Ensure we have data first
+        if ticker not in current_data:
+            # Auto-fetch if not already loaded
+            from src.sec_fetcher import fetch_and_process_10k
+            from src.transcript_fetcher import fetch_and_analyze_transcript
+            
+            print(f"Auto-fetching data for {ticker}...")
+            sec_data = fetch_and_process_10k(ticker)
+            
+            if "error" in sec_data:
+                raise HTTPException(status_code=404, detail=sec_data["error"])
+            
+            transcript_data = fetch_and_analyze_transcript(ticker)
+            
+            current_data[ticker] = {
+                "ticker": ticker,
+                "company_name": sec_data.get("company_name", ticker),
+                "metrics": sec_data.get("metrics", {}),
+                "sections": sec_data.get("sections", {}),
+                "filing_date": sec_data.get("filing_date"),
+                "transcript": transcript_data.get("full_content"),
+                "transcript_date": transcript_data.get("date"),
+                "qa_content": transcript_data.get("qa_content"),
+                "sentiment": transcript_data.get("sentiment", {}),
+            }
+        
+        # Run the SEC Specialist Agent
+        from src.sec_agent import run_sec_audit as audit
+        print(f"Running SEC Specialist Audit for {ticker}...")
+        
+        results = audit(ticker)
+        
+        if "error" in results:
+            raise HTTPException(status_code=400, detail=results["error"])
+        
+        return results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/audit/{ticker}")
+async def run_audit(ticker: str):
+    """Run SEC Specialist Agent compliance audit for a ticker."""
+    try:
+        from src.sec_agent import SECSpecialistAgent
+        
+        ticker = ticker.upper()
+        
+        print(f"Running SEC audit for {ticker}...")
+        agent = SECSpecialistAgent()
+        results = agent.run_audit(ticker)
+        
+        if "error" in results:
+            raise HTTPException(status_code=404, detail=results["error"])
+        
+        return results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"Starting Earnings Copilot API on port {port}...")

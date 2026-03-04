@@ -1,0 +1,10 @@
+name: "10-K Comprehensive Audit"
+description: "Runs a full audit of a 10-K draft against last year's filing and recent transcripts."
+steps:
+  - name: "Analyze YoY Changes"
+    prompt: "Compare {{current_draft}} with {{previous_10k}}. Highlight stagnant sections in Item 1A."
+    // turbo: true
+  - name: "Transcript Alignment"
+    prompt: "Read {{latest_transcript}}. Does the 10-K reflect the 'Top 3 Priorities' mentioned by the CEO?"
+  - name: "SEC Redline"
+    prompt: "Generate a redlined version of the MD&A section with suggestions for more technical clarity."
