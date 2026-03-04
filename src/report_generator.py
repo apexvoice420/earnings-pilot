@@ -1,5 +1,5 @@
 """
-Report Generator - Real Data Analysis with OpenAI/Modal
+Report Generator - Real Data Analysis with Groq (Free) / OpenAI / Gemini
 """
 import requests
 import os
@@ -14,30 +14,42 @@ from src.prompts import (
     FINANCIAL_HEALTH,
 )
 
-# API Configuration - Try Modal first, then OpenAI
-MODAL_API_KEY = os.getenv("MODAL_API_KEY", "")
+# API Configuration - Priority: Groq (Free) > OpenAI > Gemini
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
-# Use OpenAI by default if both are available (more reliable)
-if OPENAI_API_KEY:
+# Groq is FREE and fast - use it first
+if GROQ_API_KEY:
+    API_KEY = GROQ_API_KEY
+    API_URL = "https://api.groq.com/openai/v1/chat/completions"
+    MODEL = "llama-3.1-70b-versatile"  # Best free model
+    PROVIDER = "Groq"
+elif OPENAI_API_KEY:
     API_KEY = OPENAI_API_KEY
     API_URL = "https://api.openai.com/v1/chat/completions"
     MODEL = "gpt-4o-mini"
-elif MODAL_API_KEY:
-    API_KEY = MODAL_API_KEY
-    API_URL = "https://api.modal.com/v1/chat/completions"
-    MODEL = "zai-org/GLM-5-FP8"
+    PROVIDER = "OpenAI"
+elif GOOGLE_API_KEY:
+    API_KEY = GOOGLE_API_KEY
+    API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
+    MODEL = "gemini-1.5-flash"
+    PROVIDER = "Google"
 else:
     API_KEY = ""
     API_URL = ""
     MODEL = ""
+    PROVIDER = "None"
 
 
 def call_llm(system_prompt, user_prompt, context):
     """Call LLM API with proper error handling."""
     
     if not API_KEY:
+        print("No API key configured - using fallback")
         return generate_fallback_report(context)
+    
+    print(f"Calling {PROVIDER} API with model {MODEL}...")
     
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -77,13 +89,15 @@ Remember:
         
         if response.status_code == 200:
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            print(f"{PROVIDER} API call successful - {len(content)} chars returned")
+            return content
         else:
-            print(f"API Error {response.status_code}: {response.text}")
+            print(f"{PROVIDER} API Error {response.status_code}: {response.text[:500]}")
             return generate_fallback_report(context)
             
     except Exception as e:
-        print(f"LLM API Error: {e}")
+        print(f"{PROVIDER} API Exception: {e}")
         return generate_fallback_report(context)
 
 
@@ -97,11 +111,16 @@ KEY FINDINGS:
 - Business operations section analyzed
 - Risk factors reviewed
 
-NOTE: For detailed AI analysis, please configure OPENAI_API_KEY or MODAL_API_KEY in Railway environment variables.
+⚠️ AI ANALYSIS UNAVAILABLE - No LLM API key configured.
+
+FREE OPTION: Get a Groq API key at https://console.groq.com/keys (no credit card needed)
 
 Current configuration:
+- Groq Key (FREE): {'✅ Set' if GROQ_API_KEY else '❌ Not set'}
 - OpenAI Key: {'✅ Set' if OPENAI_API_KEY else '❌ Not set'}
-- Modal Key: {'✅ Set' if MODAL_API_KEY else '❌ Not set'}
+- Google Key: {'✅ Set' if GOOGLE_API_KEY else '❌ Not set'}
+
+Add GROQ_API_KEY to Railway environment variables for free AI analysis.
 
 Document sections analyzed: {len(context)} characters of context available.
 """
