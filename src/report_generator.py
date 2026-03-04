@@ -23,7 +23,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 if GROQ_API_KEY:
     API_KEY = GROQ_API_KEY
     API_URL = "https://api.groq.com/openai/v1/chat/completions"
-    MODEL = "llama-3.1-70b-versatile"  # Best free model
+    MODEL = "llama-3.3-70b-versatile"  # Correct model name
     PROVIDER = "Groq"
 elif OPENAI_API_KEY:
     API_KEY = OPENAI_API_KEY
