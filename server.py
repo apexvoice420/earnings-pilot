@@ -1,6 +1,6 @@
 """
 Earnings Copilot - FastAPI Backend
-Real SEC data + GLM-5 analysis
+Real SEC data + AI analysis
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,9 +32,9 @@ async def get_status():
     """Health check endpoint for Railway."""
     return {
         "status": "healthy",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "name": "Earnings Copilot",
-        "features": ["SEC EDGAR", "GLM-5 Analysis", "Real Financial Data"]
+        "features": ["SEC EDGAR", "AI Analysis", "Multi-Filing Support", "Drafting Assistant"]
     }
 
 
@@ -45,19 +45,19 @@ async def health():
 
 
 @app.get("/api/fetch/{ticker}")
-async def fetch_data(ticker: str):
-    """Fetch real 10-K and earnings transcript data for a ticker."""
+async def fetch_data(ticker: str, form_type: str = "10-K"):
+    """Fetch SEC filing data for a ticker. Supports 10-K, 10-Q, 8-K."""
     global current_data
     
     try:
-        from src.sec_fetcher import fetch_and_process_10k
+        from src.sec_fetcher import fetch_and_process_filing
         from src.transcript_fetcher import fetch_and_analyze_transcript
         
         ticker = ticker.upper()
         
-        # Fetch 10-K data with real financial metrics
-        print(f"Fetching SEC data for {ticker}...")
-        sec_data = fetch_and_process_10k(ticker)
+        # Fetch filing data
+        print(f"Fetching {form_type} data for {ticker}...")
+        sec_data = fetch_and_process_filing(ticker, form_type)
         
         if "error" in sec_data:
             raise HTTPException(status_code=404, detail=sec_data["error"])
@@ -66,13 +66,14 @@ async def fetch_data(ticker: str):
         print(f"Fetching transcript for {ticker}...")
         transcript_data = fetch_and_analyze_transcript(ticker)
         
-        # Combine into current_data for report generation
+        # Store for report generation
         current_data[ticker] = {
             "ticker": ticker,
             "company_name": sec_data.get("company_name", ticker),
             "metrics": sec_data.get("metrics", {}),
             "sections": sec_data.get("sections", {}),
             "filing_date": sec_data.get("filing_date"),
+            "form_type": form_type,
             "transcript": transcript_data.get("full_content"),
             "transcript_date": transcript_data.get("date"),
             "qa_content": transcript_data.get("qa_content"),
@@ -80,36 +81,11 @@ async def fetch_data(ticker: str):
             "management_statements": transcript_data.get("management_statements", []),
         }
         
-        # Also store in vector DB for semantic search
-        try:
-            from src.vector_store import get_store
-            store = get_store()
-            store.clear_all()
-            
-            # Add 10-K chunks
-            chunks = sec_data.get("chunks", [])
-            for chunk in chunks[:50]:  # Limit
-                store.add_documents(
-                    [chunk["content"]],
-                    [{"source": "10-K", "section": chunk["section"]}]
-                )
-            
-            # Add transcript
-            if transcript_data.get("full_content"):
-                transcript_chunks = [
-                    transcript_data["full_content"][i:i+1000]
-                    for i in range(0, min(len(transcript_data["full_content"]), 10000), 1000)
-                ]
-                for chunk in transcript_chunks:
-                    store.add_documents([chunk], [{"source": "Transcript"}])
-                    
-        except Exception as e:
-            print(f"Warning: Vector store error: {e}")
-        
         return {
             "ticker": ticker,
             "company_name": sec_data.get("company_name", ticker),
             "filing_date": sec_data.get("filing_date"),
+            "form_type": form_type,
             "metrics_available": list(sec_data.get("metrics", {}).keys()),
             "sections_loaded": list(sec_data.get("sections", {}).keys()),
             "transcript_date": transcript_data.get("date"),
@@ -127,18 +103,31 @@ async def fetch_data(ticker: str):
 
 @app.get("/api/generate/{ticker}")
 async def generate_report(ticker: str):
-    """Generate earnings prep report using GLM-5."""
+    """Generate earnings prep report using AI."""
     global current_data
     
     try:
         ticker = ticker.upper()
         
-        # Check if we have data for this ticker
+        # Auto-fetch if not already loaded
         if ticker not in current_data:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"No data found for {ticker}. Please fetch filings first using /api/fetch/{ticker}"
-            )
+            from src.sec_fetcher import fetch_and_process_filing
+            from src.transcript_fetcher import fetch_and_analyze_transcript
+            
+            sec_data = fetch_and_process_filing(ticker, "10-K")
+            if "error" in sec_data:
+                raise HTTPException(status_code=404, detail=sec_data["error"])
+            
+            transcript_data = fetch_and_analyze_transcript(ticker)
+            current_data[ticker] = {
+                "ticker": ticker,
+                "company_name": sec_data.get("company_name", ticker),
+                "metrics": sec_data.get("metrics", {}),
+                "sections": sec_data.get("sections", {}),
+                "filing_date": sec_data.get("filing_date"),
+                "transcript": transcript_data.get("full_content"),
+                "transcript_date": transcript_data.get("date"),
+            }
         
         from src.report_generator import ReportGenerator
         
@@ -160,7 +149,7 @@ async def generate_report(ticker: str):
 
 @app.get("/api/metrics/{ticker}")
 async def get_metrics(ticker: str):
-    """Get just the financial metrics for a ticker."""
+    """Get financial metrics for a ticker."""
     try:
         from src.sec_fetcher import extract_financial_metrics, get_cik
         
@@ -183,47 +172,19 @@ async def get_metrics(ticker: str):
 
 
 @app.get("/api/audit/{ticker}")
-async def run_sec_audit(ticker: str):
-    """Run SEC Specialist Agent audit on a ticker's 10-K filing."""
-    global current_data
-    
+async def run_audit(ticker: str, form_type: str = "10-K"):
+    """Run SEC Specialist Agent compliance audit for a ticker."""
     try:
+        from src.sec_agent import SECSpecialistAgent
+        
         ticker = ticker.upper()
         
-        # Ensure we have data first
-        if ticker not in current_data:
-            # Auto-fetch if not already loaded
-            from src.sec_fetcher import fetch_and_process_10k
-            from src.transcript_fetcher import fetch_and_analyze_transcript
-            
-            print(f"Auto-fetching data for {ticker}...")
-            sec_data = fetch_and_process_10k(ticker)
-            
-            if "error" in sec_data:
-                raise HTTPException(status_code=404, detail=sec_data["error"])
-            
-            transcript_data = fetch_and_analyze_transcript(ticker)
-            
-            current_data[ticker] = {
-                "ticker": ticker,
-                "company_name": sec_data.get("company_name", ticker),
-                "metrics": sec_data.get("metrics", {}),
-                "sections": sec_data.get("sections", {}),
-                "filing_date": sec_data.get("filing_date"),
-                "transcript": transcript_data.get("full_content"),
-                "transcript_date": transcript_data.get("date"),
-                "qa_content": transcript_data.get("qa_content"),
-                "sentiment": transcript_data.get("sentiment", {}),
-            }
-        
-        # Run the SEC Specialist Agent
-        from src.sec_agent import run_sec_audit as audit
-        print(f"Running SEC Specialist Audit for {ticker}...")
-        
-        results = audit(ticker)
+        print(f"Running SEC audit for {ticker} ({form_type})...")
+        agent = SECSpecialistAgent()
+        results = agent.run_audit(ticker, form_type=form_type)
         
         if "error" in results:
-            raise HTTPException(status_code=400, detail=results["error"])
+            raise HTTPException(status_code=404, detail=results["error"])
         
         return results
         
@@ -235,17 +196,17 @@ async def run_sec_audit(ticker: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/audit/{ticker}")
-async def run_audit(ticker: str):
-    """Run SEC Specialist Agent compliance audit for a ticker."""
+@app.get("/api/draft/{ticker}")
+async def draft_section(ticker: str, section: str = "mda", form_type: str = "10-K"):
+    """Draft a filing section using AI based on SEC data and transcripts."""
     try:
         from src.sec_agent import SECSpecialistAgent
         
         ticker = ticker.upper()
         
-        print(f"Running SEC audit for {ticker}...")
+        print(f"Drafting {section} for {ticker} ({form_type})...")
         agent = SECSpecialistAgent()
-        results = agent.run_audit(ticker)
+        results = agent.run_drafting(ticker, section=section, form_type=form_type)
         
         if "error" in results:
             raise HTTPException(status_code=404, detail=results["error"])
@@ -263,5 +224,5 @@ async def run_audit(ticker: str):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"Starting Earnings Copilot API on port {port}...")
-    print(f"MODAL_API_KEY configured: {'Yes' if os.environ.get('MODAL_API_KEY') else 'No'}")
+    print(f"GROQ_API_KEY configured: {'Yes' if os.environ.get('GROQ_API_KEY') else 'No'}")
     uvicorn.run(app, host="0.0.0.0", port=port)

@@ -27,132 +27,147 @@ SEC_SPECIALIST_PROMPT = """You are the Lead Disclosure Counsel. Your goal is to 
 
 class SECSpecialistAgent:
     """
-    SEC Specialist Agent - Runs comprehensive 10-K compliance audits.
+    SEC Specialist Agent - Runs comprehensive 10-K/Q/8 audits and drafts.
     """
     
     def __init__(self):
         self.system_prompt = SEC_SPECIALIST_PROMPT
 
-    def run_audit(self, ticker):
-        """Runs the full 10-K Comprehensive Audit workflow."""
-        print(f"Starting SEC Specialist Audit for {ticker}...")
+    def run_audit(self, ticker, form_type="10-K"):
+        """Runs the full Comprehensive Audit workflow for a filing."""
+        print(f"Starting SEC Specialist Audit for {ticker} ({form_type})...")
         
         ticker = ticker.upper()
         
         # 1. Fetch Data
-        print("Fetching SEC filings...")
-        current_10k = fetch_and_process_10k(ticker)
+        from src.sec_fetcher import fetch_and_process_filing
+        print(f"Fetching {form_type} filings...")
+        filing_data = fetch_and_process_filing(ticker, form_type)
         
-        if "error" in current_10k:
-            return {"error": current_10k["error"]}
+        if "error" in filing_data:
+            return {"error": filing_data["error"]}
         
         print("Fetching transcript...")
         transcript_data = fetch_and_analyze_transcript(ticker)
         
         # Build context
-        context_parts = []
-        
-        # Add company info
-        if current_10k.get("company_name"):
-            context_parts.append(f"COMPANY: {current_10k['company_name']}")
-        
-        # Add sections from 10-K
-        if current_10k.get("sections"):
-            for section_name, content in current_10k["sections"].items():
-                if content:
-                    context_parts.append(f"\n{section_name.upper()}:\n{content[:2000]}")
-        
-        # Add transcript
-        if transcript_data.get("full_content"):
-            context_parts.append(f"\nEARNINGS TRANSCRIPT:\n{transcript_data['full_content'][:3000]}")
-        
-        context = "\n".join(context_parts)
+        context = self._build_context(filing_data, transcript_data)
         
         # 2. Execute Audit Steps
         results = {}
         
-        print("Step 1: Analyzing YoY Changes...")
-        delta_prompt = """Compare the current 10-K with the previous year's filing. 
-
-Focus on:
-1. Item 1A (Risk Factors) - Identify stagnant text that hasn't changed despite business shifts
-2. New risks that should be disclosed but aren't
-3. Changes in language or emphasis
-
-Provide specific citations and recommendations."""
+        print("Step 1: Analyzing YoY/Period Changes...")
+        delta_prompt = f"""Compare the current {form_type} with the previous year's filing. 
+        Focus on stagnant text and new risks that should be disclosed."""
         results['yoy_analysis'] = call_llm(self.system_prompt, delta_prompt, context)
         
         print("Step 2: Checking Transcript Alignment...")
-        transcript_prompt = """Cross-reference the 10-K with the earnings call transcript.
-
-Analyze:
-1. Does the 10-K narrative match what management told analysts?
-2. Any contradictions between the two documents?
-3. Topics emphasized on the call but buried or missing in the 10-K?
-4. Risks disclosed in 10-K that weren't discussed on the call?
-
-Be specific with citations."""
+        transcript_prompt = f"Cross-reference the {form_type} with the earnings call transcript. Does documentation match management narrative?"
         results['transcript_alignment'] = call_llm(self.system_prompt, transcript_prompt, context)
         
-        print("Step 3: MD&A Redline & Puffery Check...")
-        redline_prompt = """Review the MD&A section (Item 7) for:
-
-1. **Puffery Check**: Flag promotional/marketing language that could trigger SEC comments
-2. **Clarity Review**: Identify vague statements that lack specificity
-3. **Driver Analysis**: Are results explained by *why* not just *what*?
-
-For each issue found, provide:
-- The problematic language (quote it)
-- Why it's an issue
-- Suggested revision
-
-Format as a redline review with [ORIGINAL] and [SUGGESTED] sections."""
+        print("Step 3: Redline & Puffery Check...")
+        redline_prompt = "Review the filing (especially MD&A) for puffery, clarity, and driver analysis."
         results['sec_redline'] = call_llm(self.system_prompt, redline_prompt, context)
         
         # Add metadata
         results['ticker'] = ticker
-        results['company_name'] = current_10k.get("company_name", ticker)
-        results['filing_date'] = current_10k.get("filing_date")
+        results['form_type'] = form_type
+        results['company_name'] = filing_data.get("company_name", ticker)
+        results['filing_date'] = filing_data.get("filing_date")
         results['transcript_date'] = transcript_data.get("date")
         
         return results
+
+    def run_drafting(self, ticker, section="mda", form_type="10-K"):
+        """Drafts a specific filing section based on current data and transcripts."""
+        print(f"Drafting {section.upper()} for {ticker} ({form_type})...")
+        
+        ticker = ticker.upper()
+        from src.sec_fetcher import fetch_and_process_filing
+        filing_data = fetch_and_process_filing(ticker, form_type)
+        transcript_data = fetch_and_analyze_transcript(ticker)
+        
+        context = self._build_context(filing_data, transcript_data)
+        
+        prompts = {
+            "mda": f"""Draft a professional MD&A section for a {form_type} filing.
+            Use the financial data provided and the 'drivers' identified in the earnings transcript.
+            Ensure you explain the 'Why' behind the numbers. Tone: Wall Street Objective.""",
+            "risk_factors": f"Draft an updated Risk Factors (Item 1A) for a {form_type} based on the transcript discussion and current macro environment.",
+            "business": "Draft a 'Business Description' update focusing on new product lines or strategic shifts mentioned in recent transcripts."
+        }
+        
+        draft_prompt = prompts.get(section, f"Draft the {section} section for a {form_type} filing.")
+        draft = call_llm(self.system_prompt, draft_prompt, context)
+        
+        return {
+            "ticker": ticker,
+            "section": section,
+            "form_type": form_type,
+            "draft": draft,
+            "company_name": filing_data.get("company_name", ticker)
+        }
+
+    def _build_context(self, filing_data, transcript_data):
+        """Builds a structured context string for the LLM."""
+        context_parts = []
+        if filing_data.get("company_name"):
+            context_parts.append(f"COMPANY: {filing_data['company_name']}")
+        
+        if filing_data.get("sections"):
+            for section_name, content in filing_data["sections"].items():
+                if content:
+                    context_parts.append(f"\n{section_name.upper()}:\n{content[:2000]}")
+        
+        if transcript_data.get("full_content"):
+            context_parts.append(f"\nEARNINGS TRANSCRIPT:\n{transcript_data['full_content'][:3000]}")
+            
+        return "\n".join(context_parts)
 
     def format_report(self, ticker, results):
         """Formats the audit results into a professional markdown report."""
         if "error" in results:
             return f"# Error\n\n{results['error']}"
         
-        report = f"""# SEC 10-K Compliance Audit: {results.get('company_name', ticker)}
+        if "draft" in results:
+            return f"""# Draft {results['section'].upper()} Section: {results['company_name']} ({results['ticker']})
+**Form Type:** {results['form_type']}
+**Source:** Earnings Pilot Drafting Assistant
+
+---
+
+{results['draft']}
+
+---
+*⚠️ Professional Disclaimer: This draft is generated by an AI assistant and must be reviewed by legal and financial counsel before official filing.*"""
+
+        report = f"""# SEC {results.get('form_type', '10-K')} Compliance Audit: {results.get('company_name', ticker)}
 
 **Filing Date:** {results.get('filing_date', 'N/A')}  
 **Transcript Date:** {results.get('transcript_date', 'N/A')}
 
 ---
 
-## 1. YoY Delta Analysis (Item 1A Focus)
-
+## 1. YoY/Period Delta Analysis
 {results.get('yoy_analysis', 'No data.')}
 
 ---
 
-## 2. Strategic Alignment (10-K vs Transcript)
-
+## 2. Strategic Alignment
 {results.get('transcript_alignment', 'No data.')}
 
 ---
 
-## 3. MD&A Redline & Puffery Check
-
+## 3. Redline & Puffery Check
 {results.get('sec_redline', 'No data.')}
 
 ---
 
-*⚠️ Professional Disclaimer: This report is generated by an AI agent for informational purposes only. It does not constitute legal, tax, or financial advice. Consult qualified professionals for official guidance.*
-"""
+*⚠️ Professional Disclaimer: This report is generated by an AI agent for informational purposes only. It does not constitute legal, tax, or financial advice. Consult qualified professionals for official guidance.*"""
         return report
 
 
-def run_sec_audit(ticker):
+def run_sec_audit(ticker, form_type="10-K"):
     """Convenience function to run audit and return results."""
     agent = SECSpecialistAgent()
     return agent.run_audit(ticker)

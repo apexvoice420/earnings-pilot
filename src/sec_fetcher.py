@@ -142,8 +142,8 @@ def extract_financial_metrics(cik):
     return metrics
 
 
-def get_10k_text(cik):
-    """Fetch the actual 10-K document text."""
+def get_filing_text(cik, form_type="10-K"):
+    """Fetch the actual filing document text for a given form type."""
     filings = get_filings_list(cik)
     if not filings:
         return None
@@ -153,9 +153,9 @@ def get_10k_text(cik):
     accession_numbers = recent.get("accessionNumber", [])
     primary_docs = recent.get("primaryDocument", [])
     
-    # Find most recent 10-K
+    # Find most recent filing of specified type
     for i, form in enumerate(forms):
-        if form == "10-K":
+        if form == form_type:
             acc_num = accession_numbers[i].replace("-", "")
             primary_doc = primary_docs[i]
             
@@ -170,16 +170,22 @@ def get_10k_text(cik):
                     "filing_date": recent.get("filingDate", [])[i] if i < len(recent.get("filingDate", [])) else None,
                     "report_date": recent.get("reportDate", [])[i] if i < len(recent.get("reportDate", [])) else None,
                     "accession_number": accession_numbers[i],
+                    "form_type": form,
                 }
             except Exception as e:
-                print(f"Error fetching 10-K document: {e}")
+                print(f"Error fetching {form_type} document: {e}")
                 continue
     
     return None
 
 
-def extract_sections_from_html(html_text):
-    """Extract key sections from 10-K HTML."""
+def get_10k_text(cik):
+    """Fetch the actual 10-K document text (legacy wrapper)."""
+    return get_filing_text(cik, "10-K")
+
+
+def extract_sections_from_html(html_text, form_type="10-K"):
+    """Extract key sections from SEC filing HTML based on form type."""
     
     # Remove HTML tags for text extraction
     clean_text = re.sub(r'<[^>]+>', ' ', html_text)
@@ -187,25 +193,44 @@ def extract_sections_from_html(html_text):
     
     sections = {}
     
-    # Define section patterns for 10-K
-    section_patterns = {
-        "business": r"Item\s+1\.\s*Business(.*?)(?=Item\s+1A|$)",
-        "risk_factors": r"Item\s+1A\.\s*Risk\s*Factors(.*?)(?=Item\s+1B|Item\s+2|$)",
-        "unresolved_staff_comments": r"Item\s+1B\.\s*Unresolved\s*Staff\s*Comments(.*?)(?=Item\s+2|$)",
-        "properties": r"Item\s+2\.\s*Properties(.*?)(?=Item\s+3|$)",
-        "legal_proceedings": r"Item\s+3\.\s*Legal\s*Proceedings(.*?)(?=Item\s+4|$)",
-        "mda": r"Item\s+7\.\s*Management[\'']?s\s*Discussion\s*and\s*Analysis.*?(.*?)(?=Item\s+7A|Item\s+8|$)",
-        "quantitative_disclosures": r"Item\s+7A\.\s*Quantitative\s*and\s*Qualitative.*?(.*?)(?=Item\s+8|$)",
-        "financial_statements": r"Item\s+8\.\s*Financial\s*Statements(.*?)(?=Item\s+9|$)",
-        "controls": r"Item\s+9A\.\s*Controls\s*and\s*Procedures(.*?)(?=Item\s+9B|$)",
-    }
+    # Define section patterns based on form type
+    if form_type == "10-K":
+        section_patterns = {
+            "business": r"Item\s+1\.\s*Business(.*?)(?=Item\s+1A|$)",
+            "risk_factors": r"Item\s+1A\.\s*Risk\s*Factors(.*?)(?=Item\s+1B|Item\s+2|$)",
+            "unresolved_staff_comments": r"Item\s+1B\.\s*Unresolved\s*Staff\s*Comments(.*?)(?=Item\s+2|$)",
+            "properties": r"Item\s+2\.\s*Properties(.*?)(?=Item\s+3|$)",
+            "legal_proceedings": r"Item\s+3\.\s*Legal\s*Proceedings(.*?)(?=Item\s+4|$)",
+            "mda": r"Item\s+7\.\s*Management[\'']?s\s*Discussion\s*and\s*Analysis.*?(.*?)(?=Item\s+7A|Item\s+8|$)",
+            "quantitative_disclosures": r"Item\s+7A\.\s*Quantitative\s*and\s*Qualitative.*?(.*?)(?=Item\s+8|$)",
+            "financial_statements": r"Item\s+8\.\s*Financial\s*Statements(.*?)(?=Item\s+9|$)",
+            "controls": r"Item\s+9A\.\s*Controls\s*and\s*Procedures(.*?)(?=Item\s+9B|$)",
+        }
+    elif form_type == "10-Q":
+        section_patterns = {
+            "financial_statements": r"Part\s+I\s+Item\s+1\.\s*Financial\s*Statements(.*?)(?=Item\s+2|$)",
+            "mda": r"Item\s+2\.\s*Management[\'']?s\s*Discussion\s*and\s*Analysis.*?(.*?)(?=Item\s+3|Item\s+4|$)",
+            "quantitative_disclosures": r"Item\s+3\.\s*Quantitative\s*and\s*Qualitative.*?(.*?)(?=Item\s+4|$)",
+            "controls": r"Item\s+4\.\s*Controls\s*and\s*Procedures(.*?)(?=Part\s+II|$)",
+            "legal_proceedings": r"Part\s+II\s+Item\s+1\.\s*Legal\s*Proceedings(.*?)(?=Item\s+1A|$)",
+            "risk_factors": r"Item\s+1A\.\s*Risk\s*Factors(.*?)(?=Item\s+2|$)",
+        }
+    elif form_type == "8-K":
+        section_patterns = {
+            "results_of_operations": r"Item\s+2\.02\.\s*Results\s*of\s*Operations(.*?)(?=Item|$)",
+            "fd_disclosure": r"Item\s+7\.01\.\s*Regulation\s*FD\s*Disclosure(.*?)(?=Item|$)",
+            "other_events": r"Item\s+8\.01\.\s*Other\s*Events(.*?)(?=Item|$)",
+            "financial_statements": r"Item\s+9\.01\.\s*Financial\s*Statements(.*?)(?=SIGNATURE|$)",
+        }
+    else:
+        return {}
     
     for section_name, pattern in section_patterns.items():
         match = re.search(pattern, clean_text, re.IGNORECASE | re.DOTALL)
         if match:
             content = match.group(1).strip()
-            # Limit to first 10000 chars per section for token management
-            sections[section_name] = content[:10000]
+            # Limit for token management
+            sections[section_name] = content[:15000]
     
     return sections
 
@@ -243,8 +268,8 @@ def format_currency(value):
         return f"${value:,.0f}"
 
 
-def fetch_and_process_10k(ticker):
-    """Main function to fetch and process 10-K data."""
+def fetch_and_process_filing(ticker, form_type="10-K"):
+    """Main function to fetch and process an SEC filing of any type."""
     
     cik = get_cik(ticker)
     if not cik:
@@ -254,14 +279,14 @@ def fetch_and_process_10k(ticker):
     print(f"Fetching financial metrics for {ticker}...")
     metrics = extract_financial_metrics(cik)
     
-    # Get 10-K document
-    print("Fetching 10-K document...")
-    doc_data = get_10k_text(cik)
+    # Get document
+    print(f"Fetching {form_type} document...")
+    doc_data = get_filing_text(cik, form_type)
     
     # Extract sections
     sections = {}
     if doc_data and doc_data.get("text"):
-        sections = extract_sections_from_html(doc_data["text"])
+        sections = extract_sections_from_html(doc_data["text"], form_type)
     
     # Get company info
     filings = get_filings_list(cik)
@@ -274,11 +299,17 @@ def fetch_and_process_10k(ticker):
         "metrics": metrics,
         "sections": sections,
         "filing_date": doc_data.get("filing_date") if doc_data else None,
-        "chunks": chunk_sections(sections),
+        "form_type": form_type,
+        "chunks": chunk_sections(sections, source=form_type),
     }
 
 
-def chunk_sections(sections, chunk_size=1000):
+def fetch_and_process_10k(ticker):
+    """Main function to fetch and process 10-K data (legacy wrapper)."""
+    return fetch_and_process_filing(ticker, "10-K")
+
+
+def chunk_sections(sections, chunk_size=1000, source="SEC"):
     """Chunk sections for vector storage."""
     chunks = []
     
@@ -292,7 +323,7 @@ def chunk_sections(sections, chunk_size=1000):
                     chunks.append({
                         "content": chunk,
                         "section": section_name,
-                        "source": "10-K",
+                        "source": source,
                     })
     
     return chunks
