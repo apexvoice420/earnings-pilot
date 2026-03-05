@@ -5,7 +5,9 @@ Fetches actual 10-K, 10-Q filings from SEC EDGAR and extracts structured financi
 import requests
 import re
 import json
+import time
 from datetime import datetime
+from functools import lru_cache
 
 # SEC requires User-Agent
 HEADERS = {
@@ -15,6 +17,33 @@ HEADERS = {
 
 # Cache for ticker-to-CIK mapping (loaded once from SEC)
 _TICKER_CIK_CACHE = None
+
+# Cache for company data (prevent rate limiting)
+_COMPANY_DATA_CACHE = {}
+_CACHE_TTL = 3600  # 1 hour cache
+
+# Rate limiting
+_LAST_REQUEST_TIME = 0
+_REQUEST_INTERVAL = 0.2  # 200ms between requests (5/sec max)
+
+
+def _rate_limited_request(url, headers=None, timeout=30):
+    """Make a rate-limited request to SEC."""
+    global _LAST_REQUEST_TIME
+    
+    # Wait if needed
+    elapsed = time.time() - _LAST_REQUEST_TIME
+    if elapsed < _REQUEST_INTERVAL:
+        time.sleep(_REQUEST_INTERVAL - elapsed)
+    
+    _LAST_REQUEST_TIME = time.time()
+    
+    try:
+        response = requests.get(url, headers=headers or HEADERS, timeout=timeout)
+        return response
+    except Exception as e:
+        print(f"Request error: {e}")
+        return None
 
 
 def get_cik(ticker):
@@ -35,7 +64,9 @@ def get_cik(ticker):
             # Build lookup dictionary
             _TICKER_CIK_CACHE = {}
             for entry in data.values():
-                cik = str(entry.get("cik_str", "")).zfill(10)
+                # Handle both int and string CIK formats
+                cik_raw = entry.get("cik_str", entry.get("cik", 0))
+                cik = str(int(cik_raw)).zfill(10) if cik_raw else ""
                 ticker_symbol = entry.get("ticker", "").upper()
                 if ticker_symbol and cik:
                     _TICKER_CIK_CACHE[ticker_symbol] = cik
@@ -45,46 +76,60 @@ def get_cik(ticker):
             print(f"Warning: Could not load SEC ticker mapping: {e}")
             _TICKER_CIK_CACHE = {}
     
-    return _TICKER_CIK_CACHE.get(ticker)
+    result = _TICKER_CIK_CACHE.get(ticker)
+    if result:
+        print(f"CIK for {ticker}: {result}")
+    else:
+        print(f"CIK not found for {ticker}")
+    return result
 
 
 def get_company_facts(cik):
     """Fetch company facts from SEC EDGAR API - contains all financial data."""
+    cache_key = f"facts_{cik}"
+    if cache_key in _COMPANY_DATA_CACHE:
+        return _COMPANY_DATA_CACHE[cache_key]
+    
     url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"
     
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching company facts: {e}")
-        return None
+    response = _rate_limited_request(url)
+    if response and response.status_code == 200:
+        data = response.json()
+        _COMPANY_DATA_CACHE[cache_key] = data
+        return data
+    
+    print(f"Error fetching company facts: {response.status_code if response else 'No response'}")
+    return None
 
 
 def get_company_concept(cik, concept, taxonomy="us-gaap"):
     """Fetch specific financial concept (Revenue, NetIncome, etc.)."""
     url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik.zfill(10)}/{taxonomy}/{concept}.json"
     
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
+    response = _rate_limited_request(url)
+    if response and response.status_code == 200:
         return response.json()
-    except Exception as e:
-        print(f"Error fetching concept {concept}: {e}")
-        return None
+    
+    print(f"Error fetching concept {concept}: {response.status_code if response else 'No response'}")
+    return None
 
 
 def get_filings_list(cik):
     """Get list of recent filings for a company."""
+    cache_key = f"filings_{cik}"
+    if cache_key in _COMPANY_DATA_CACHE:
+        return _COMPANY_DATA_CACHE[cache_key]
+    
     url = f"https://data.sec.gov/submissions/CIK{cik.zfill(10)}.json"
     
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        print(f"Error fetching filings list: {e}")
-        return None
+    response = _rate_limited_request(url)
+    if response and response.status_code == 200:
+        data = response.json()
+        _COMPANY_DATA_CACHE[cache_key] = data
+        return data
+    
+    print(f"Error fetching filings list: {response.status_code if response else 'No response'}")
+    return None
 
 
 def extract_financial_metrics(cik):
@@ -162,9 +207,8 @@ def get_filing_text(cik, form_type="10-K"):
             # Build filing URL
             filing_url = f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{acc_num}/{primary_doc}"
             
-            try:
-                response = requests.get(filing_url, headers=HEADERS, timeout=60)
-                response.raise_for_status()
+            response = _rate_limited_request(filing_url, timeout=60)
+            if response and response.status_code == 200:
                 return {
                     "text": response.text,
                     "filing_date": recent.get("filingDate", [])[i] if i < len(recent.get("filingDate", [])) else None,
@@ -172,8 +216,8 @@ def get_filing_text(cik, form_type="10-K"):
                     "accession_number": accession_numbers[i],
                     "form_type": form,
                 }
-            except Exception as e:
-                print(f"Error fetching {form_type} document: {e}")
+            else:
+                print(f"Error fetching {form_type} document: {response.status_code if response else 'No response'}")
                 continue
     
     return None
