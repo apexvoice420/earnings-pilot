@@ -13,39 +13,39 @@ HEADERS = {
     "Accept": "application/json",
 }
 
-# CIK mapping for major tickers
-TICKER_TO_CIK = {
-    "AAPL": "0000320193",
-    "MSFT": "0000789019",
-    "GOOGL": "0001652044",
-    "GOOG": "0001652044",
-    "AMZN": "0001018724",
-    "META": "0001326801",
-    "NVDA": "0001045810",
-    "TSLA": "0001318605",
-    "JPM": "0000019617",
-    "V": "0001403161",
-    "JNJ": "0000200406",
-    "WMT": "0000104169",
-    "PG": "0000080424",
-    "MA": "0001141391",
-    "UNH": "0000731766",
-    "HD": "0000354950",
-    "DIS": "0001744489",
-    "PYPL": "0001633917",
-    "NFLX": "0001065280",
-    "INTC": "0000050863",
-    "AMD": "0000002488",
-    "CRM": "0001108524",
-    "ADBE": "0000796343",
-    "ORCL": "0001341439",
-    "CSCO": "0000858877",
-}
+# Cache for ticker-to-CIK mapping (loaded once from SEC)
+_TICKER_CIK_CACHE = None
 
 
 def get_cik(ticker):
-    """Get CIK number for ticker."""
-    return TICKER_TO_CIK.get(ticker.upper())
+    """Get CIK number for any ticker using SEC's official mapping."""
+    global _TICKER_CIK_CACHE
+    
+    ticker = ticker.upper()
+    
+    # Load the full ticker mapping from SEC if not cached
+    if _TICKER_CIK_CACHE is None:
+        try:
+            print("Loading ticker-to-CIK mapping from SEC...")
+            url = "https://www.sec.gov/files/company_tickers.json"
+            response = requests.get(url, headers=HEADERS, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Build lookup dictionary
+            _TICKER_CIK_CACHE = {}
+            for entry in data.values():
+                cik = str(entry.get("cik_str", "")).zfill(10)
+                ticker_symbol = entry.get("ticker", "").upper()
+                if ticker_symbol and cik:
+                    _TICKER_CIK_CACHE[ticker_symbol] = cik
+            
+            print(f"Loaded {len(_TICKER_CIK_CACHE)} tickers from SEC")
+        except Exception as e:
+            print(f"Warning: Could not load SEC ticker mapping: {e}")
+            _TICKER_CIK_CACHE = {}
+    
+    return _TICKER_CIK_CACHE.get(ticker)
 
 
 def get_company_facts(cik):
